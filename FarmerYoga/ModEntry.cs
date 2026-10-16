@@ -27,11 +27,13 @@ namespace FarmerYoga
             Helper.Events.GameLoop.GameLaunched += GameLoop_GameLaunched;
             Helper.Events.GameLoop.UpdateTicked += GameLoop_UpdateTicked;
             Helper.Events.Content.AssetRequested += OnAssetRequested;
-            helper.ConsoleCommands.Add("setFrameOffset", "Sets the x and y offset of the farmer sprite at indicated index.\n \nUsage: setFrameOffset <sheet-name> <frame-index> <x-offset> <y-offset>\n<sheet-name> The " +
+            helper.ConsoleCommands.Add("setFrameOffset", "Sets the x and y offset of the farmer sprite at indicated index.\n \nUsage: setFrameOffset <sheet-name> <frame-index> <x-offset> <y-offset>\n<sheet-name> The label of the sprite sheet file (e.g. farmer_<sheet-name> but without the farmer_)" +
                 "<frame-index> The index of the targeted sprite on the farmer's sprite sheet\n<x-offset> The number of pixels to horizontally offset the farmer's hair and clothes (positive right, negative left)\n" +
                 "<y-offset> The number of pixels to vertically offset the farmer's hair and clothes (positive down, negative up)", SetFrameOffset);
             helper.ConsoleCommands.Add("getFrameOffset", "Gets the x and y offset of the farmer sprite at indicated index.\n \nUsage: getFrameOffset <frame-index>\n" +
                 "<frame-index> The index of the targeted sprite on the farmer's sprite sheet", GetFrameOffset);
+            helper.ConsoleCommands.Add("setDimensions", "Sets the width and height of the farmer sprite sheet.\n Usage: setDimensions <sheet-name> <pants cell width> <pants cell height> <shirt cell width> <shirt cell height>\n<sheet-name> The label of the sprite sheet file (e.g. farmer_<sheet-name> but without the farmer_)" +
+                "<width> The width of each frame on the sprite sheet\n<height> The height of each frame on the sprite sheet", SetSheetDimensions);
 
             var harmony = new Harmony(this.ModManifest.UniqueID);
             harmony.PatchAll();
@@ -87,20 +89,51 @@ namespace FarmerYoga
             Game1.player.bathingClothes.Set(false);
             Game1.player.shirtItem.Value = (Clothing?)OriginalShirt;
             Game1.player.pantsItem.Value = (Clothing?)OriginalPants;
+            FarmerRendererPatch.SetFrameDimensions(GetClothingDimensions("default"));
             OriginalShirt = null;
             OriginalPants = null;
 
             Game1.player.FarmerRenderer.MarkSpriteDirty();
         }
 
-        private int[][] GetAllOffsetPairs(string fileName)
+        private int[] GetClothingDimensions(string fileName)
         {
-            SheetOffset? match = null;
+            if (fileName == "default" || fileName == null)
+            {
+                return new int[] { 16, 32, 8, 8 };
+            }
+            SheetDetails? match = null;
             string? matchedModId = null;
 
-            foreach (var kvp in Config.ModOffsets!)
+            foreach (var kvp in Config.ModDetails!)
             {
-                foreach (SheetOffset offsets in kvp.Value)
+                foreach (SheetDetails offsets in kvp.Value)
+                {
+                    if (offsets.SheetID != fileName)
+                        continue;
+
+                    if (match != null)
+                    {
+                        Monitor.Log($"Sheet ID '{fileName}' is defined more than once (in '{matchedModId}' and '{kvp.Key}') — using the first one found. Sheet IDs should be unique across all loaded content packs.", LogLevel.Warn);
+                        continue;
+                    }
+
+                    match = offsets;
+                    matchedModId = kvp.Key;
+                }
+            }
+
+            return match?.ClothingDimensions ?? new int[] { 16, 32, 8, 8 };
+        }
+
+        private int[][] GetAllOffsetPairs(string fileName)
+        {
+            SheetDetails? match = null;
+            string? matchedModId = null;
+
+            foreach (var kvp in Config.ModDetails!)
+            {
+                foreach (SheetDetails offsets in kvp.Value)
                 {
                     if (offsets.SheetID != fileName)
                         continue;
@@ -179,14 +212,15 @@ namespace FarmerYoga
             Helper.GameContent.InvalidateCache($"Characters/Farmer/shirts_{fileName}");
             Helper.GameContent.InvalidateCache($"Characters/Farmer/pants_{fileName}");
 
+            FarmerRendererPatch.SetFrameDimensions(GetClothingDimensions(fileName));
             Game1.player.FarmerRenderer.textureName.Set(customBodyPath);
             OriginalShirt = Game1.player.shirtItem.Value;
             OriginalPants = Game1.player.pantsItem.Value;
             Game1.player.bathingClothes.Set(true);
             Game1.player.pantsItem.Value = null;
 
-            ChangeToCustomOffsets(fileName);
 
+            ChangeToCustomOffsets(fileName);
             Game1.player.FarmerRenderer.MarkSpriteDirty();
 
             @event.CurrentCommand++;
@@ -209,9 +243,9 @@ namespace FarmerYoga
                     if (int.TryParse(args[1], out int frameIndex) && int.TryParse(args[2], out int xOffset) && int.TryParse(args[3], out int yOffset))
                     {
                         string fileName = args[0];
-                        foreach (SheetOffset[] modOffset in Config.ModOffsets!.Values)
+                        foreach (SheetDetails[] modOffset in Config.ModDetails!.Values)
                         {
-                            foreach (SheetOffset offsets in modOffset)
+                            foreach (SheetDetails offsets in modOffset)
                             {
                                 if (offsets.SheetID == fileName)
                                 {
@@ -224,6 +258,46 @@ namespace FarmerYoga
                                     offsets.Offsets[frameIndex][0] = xOffset;
                                     offsets.Offsets[frameIndex][1] = yOffset;
                                     Monitor.Log($"Sprite at index {frameIndex} has been set to offset [{xOffset}, {yOffset}].", LogLevel.Info);
+                                    WriteConfig();
+                                    return;
+                                }
+                            }
+                        }
+                        Monitor.Log($"No sheet named '{fileName}' found in any loaded FarmerYoga content pack.", LogLevel.Error);
+                    }
+                    else
+                    {
+                        throw new FormatException($"Arguments 2, 3, and 4 must be integers.");
+                    }
+                }
+                else
+                {
+                    throw new ArgumentOutOfRangeException(nameof(args), $"Arguments require 4 indexes. {args.Length} indexes found.");
+                }
+            }
+            catch (Exception e)
+            {
+                Monitor.Log(e.Message, LogLevel.Error);
+            }
+        }
+
+        private void SetSheetDimensions(string command, string[] args)
+        {
+            try
+            {
+                if (args.Length == 5)
+                {
+                    if (int.TryParse(args[1], out int pantsWidth) && int.TryParse(args[2], out int pantsHeight) && int.TryParse(args[3], out int shirtWidth) && int.TryParse(args[4], out int shirtHeight))
+                    {
+                        string fileName = args[0];
+                        foreach (SheetDetails[] detailsList in Config.ModDetails!.Values)
+                        {
+                            foreach (SheetDetails details in detailsList)
+                            {
+                                if (details.SheetID == fileName)
+                                {
+                                    details.ClothingDimensions = new int[] { pantsWidth, pantsHeight, shirtWidth, shirtHeight };
+                                    Monitor.Log($"Sheet '{fileName}' clothing dimensions have been updated.", LogLevel.Info);
                                     WriteConfig();
                                     return;
                                 }
@@ -280,22 +354,22 @@ namespace FarmerYoga
                 if (target is null)
                     continue;
 
-                Dictionary<string, SheetOffset[]>? modOffsets = target.ReadJsonFile<Dictionary<string, SheetOffset[]>>("FY_Offsets.json");
+                Dictionary<string, SheetDetails[]>? modDetails = target.ReadJsonFile<Dictionary<string, SheetDetails[]>>("FY_Offsets.json");
 
-                if (modOffsets is null)
+                if (modDetails is null)
                 {
-                    modOffsets = BuildDefaultOffsets(target);
-                    if (modOffsets.Count > 0)
+                    modDetails = BuildDefaultOffsets(target);
+                    if (modDetails.Count > 0)
                     {
-                        target.WriteJsonFile("Fy_config/FY_Offsets.json", modOffsets);
-                        Monitor.Log($"Generated default FY_Offsets.json for '{mod.Manifest.UniqueID}' with {modOffsets.Values.Sum(v => v.Length)} sheet(s).", LogLevel.Info);
+                        target.WriteJsonFile("Fy_config/FY_Offsets.json", modDetails);
+                        Monitor.Log($"Generated default FY_Offsets.json for '{mod.Manifest.UniqueID}' with {modDetails.Values.Sum(v => v.Length)} sheet(s).", LogLevel.Info);
                     }
                 }
 
                 try
                 {
-                    foreach (var kvp in modOffsets)
-                        newConfig.ModOffsets![kvp.Key] = kvp.Value;
+                    foreach (var kvp in modDetails)
+                        newConfig.ModDetails![kvp.Key] = kvp.Value;
                 }
                 catch (Exception e)
                 {
@@ -305,15 +379,15 @@ namespace FarmerYoga
             return newConfig;
         }
 
-        private Dictionary<string, SheetOffset[]> BuildDefaultOffsets(IContentPack pack)
+        private Dictionary<string, SheetDetails[]> BuildDefaultOffsets(IContentPack pack)
         {
-            var result = new Dictionary<string, SheetOffset[]>();
+            var result = new Dictionary<string, SheetDetails[]>();
 
             string configFolder = Path.Combine(pack.DirectoryPath, "FY_config");
             if (!Directory.Exists(configFolder))
                 Directory.CreateDirectory(configFolder);
 
-            var sheets = new List<SheetOffset>();
+            var sheets = new List<SheetDetails>();
             var suffixesSeen = new HashSet<string>();
 
             foreach (string filePath in Directory.GetFiles(pack.DirectoryPath, "farmer_*.png", SearchOption.AllDirectories))
@@ -323,15 +397,15 @@ namespace FarmerYoga
                     ? nameWithoutExtension["farmer_girl_".Length..]
                     : nameWithoutExtension["farmer_".Length..];
 
-                if (!suffixesSeen.Add(suffix))
+                    if (!suffixesSeen.Add(suffix))
                     continue;
 
-                int frameCount = GetFrameCount(filePath);
+                int frameCount = GetFrameCount(filePath, GetClothingDimensions(suffix));
                 int[][] offsets = new int[frameCount][];
                 for (int i = 0; i < frameCount; i++)
                     offsets[i] = new int[] { 0, 0 };
 
-                sheets.Add(new SheetOffset { SheetID = suffix, Offsets = offsets });
+                sheets.Add(new SheetDetails { SheetID = suffix, Offsets = offsets });
             }
 
             if (sheets.Count > 0)
@@ -340,12 +414,15 @@ namespace FarmerYoga
             return result;
         }
 
-        private int GetFrameCount(string pngPath)
+        private int GetFrameCount(string pngPath, int[] clothingDimensions)
         {
             using FileStream stream = File.OpenRead(pngPath);
             using Texture2D probe = Texture2D.FromStream(Game1.graphics.GraphicsDevice, stream);
-            int rows = Math.Max(1, probe.Height / 32);
-            return 6 * rows;
+            int frameWidth = clothingDimensions[0];
+            int frameHeight = clothingDimensions[1];
+            int rows = Math.Max(1, probe.Height / frameHeight);
+            int columns = Math.Max(1, probe.Width / frameWidth);
+            return columns * rows;
         }
 
         private void WriteConfig()
@@ -359,16 +436,16 @@ namespace FarmerYoga
                 if (target is null)
                     continue;
 
-                if (!Config.ModOffsets!.TryGetValue(mod.Manifest.UniqueID, out SheetOffset[]? offsets))
+                if (!Config.ModDetails!.TryGetValue(mod.Manifest.UniqueID, out SheetDetails[]? details))
                     continue;
 
                 try
                 {
-                    Dictionary<string, SheetOffset[]> modOffsets = new()
+                    Dictionary<string, SheetDetails[]> modDetails = new()
                     {
-                        { mod.Manifest.UniqueID, offsets }
+                        { mod.Manifest.UniqueID, details }
                     };
-                    target.WriteJsonFile("FY_config/FY_Offsets.json", modOffsets);
+                    target.WriteJsonFile("FY_config/FY_Offsets.json", modDetails);
                 }
                 catch (Exception e)
                 {

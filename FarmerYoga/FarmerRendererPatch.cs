@@ -26,12 +26,20 @@ namespace FarmerYoga
         private static Texture2D? cachedShirt;
         private static Texture2D? cachedPants;
         private static string? cachedSuffix;
+        private static int[] cachedPantsDimensions = new int[] { 16, 32 };
+        private static int[] cachedShirtDimensions = new int[] { 8, 8 };
 
         public static void ClearTextureCache()
         {
             cachedShirt = null;
             cachedPants = null;
             cachedSuffix = null;
+        }
+        public static void SetFrameDimensions(int[] clothingDimensions)
+        {
+            clothingDimensions ??= new int[] {16, 32, 8, 8};
+            cachedPantsDimensions = new int[] { clothingDimensions[0], clothingDimensions[1] };
+            cachedShirtDimensions = new int[] { clothingDimensions[2], clothingDimensions[3] };
         }
 
         [HarmonyPatch(typeof(FarmerRenderer), "draw", new System.Type[] {
@@ -124,27 +132,32 @@ namespace FarmerYoga
             
             if (cachedPants != null)
             {
+                int[] pantsDims = SetPantsDimensions();
+                int pantsWidth = pantsDims[0];
+                int pantsHeight = pantsDims[1];
                 Vector2 pantsOrigin = new(origin.X, origin.Y - 8f);
                 Color pantsColor = overrideColor == Color.White ? who.pantsColor.Value : overrideColor;
-                int pantsColumns = cachedPants.Width / 16;
-                int pantsRows = cachedPants.Height / 32;
+                int pantsColumns = cachedPants.Width / pantsWidth;
+                int pantsRows = cachedPants.Height / pantsHeight;
                 int pantsFrame = currentFrame % Math.Max(1, pantsColumns * pantsRows);
                 int pantsCol = pantsFrame % pantsColumns;
                 int pantsRow = pantsFrame / pantsColumns;
-                Rectangle pantsRect = new(pantsCol * 16, pantsRow * 32, 16, 32);
+                Rectangle pantsRect = new(pantsCol * pantsWidth, pantsRow * pantsHeight, pantsWidth, pantsHeight);
 
                 b.Draw(cachedPants, position, pantsRect, pantsColor, rotation, pantsOrigin, renderScale, effects, layerDepth + 0.0001f);
             }
 
             if (cachedShirt != null)
             {
-                
-                int shirtColumns = cachedShirt.Width / 8;
-                int shirtRows = cachedShirt.Height / 8;
+                int[] shirtDims = SetShirtDimensions();
+                int shirtWidth = shirtDims[0];
+                int shirtHeight = shirtDims[1];
+                int shirtColumns = cachedShirt.Width / shirtWidth;
+                int shirtRows = cachedShirt.Height / shirtHeight;
                 int shirtFrame = currentFrame % Math.Max(1, shirtColumns * shirtRows);
                 int shirtCol = shirtFrame % shirtColumns;
                 int shirtRow = shirtFrame / shirtColumns;
-                Rectangle shirtRect = new(shirtCol * 8, shirtRow * 8, 8, 8);
+                Rectangle shirtRect = new(shirtCol * shirtWidth, shirtRow * shirtHeight, shirtWidth, shirtHeight);
 
                 Vector2 shirtOrigin = new(origin.X - 4f, origin.Y - 24f);
                 Color shirtColor = overrideColor == Color.White ? who.GetShirtColor() : overrideColor;

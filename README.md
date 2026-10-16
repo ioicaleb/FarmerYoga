@@ -18,10 +18,10 @@ Your content pack needs two dependencies in its `manifest.json`:
   and to auto-generate a hair/accessory offset file for your sheet.
 
 ```json
-"Dependencies": [
-  { "UniqueID": "Pathoschild.ContentPatcher" },
-  { "UniqueID": "ioicaleb.farmeryoga" }
-]
+  "Dependencies": [
+    { "UniqueID": "Pathoschild.ContentPatcher" },
+    { "UniqueID": "ioicaleb.farmeryoga" }
+  ]
 ```
 
 ## File layout
@@ -69,7 +69,7 @@ Use Content Patcher's `Load` action to register your images under the asset name
 }
 ```
 
-You always need all four `farmer_`/`farmer_girl_`/`shirts_`/`pants_` images for a given suffix, even
+You always need `shirts_`/`pants_` images for a given suffix, even
 if the shirt or pants art is just fully transparent placeholder — Free Yoga for Farmers doesn't require them to
 contain anything, but it does look for them at those asset names.
 
@@ -102,24 +102,34 @@ event.
 
 ## Sprite sheet conventions
 
-All sheets use a 16×32 pixel grid per pose, matching the base game's convention.
+All sheets use a 16×32 pixel grid per pose for farmer's and pants and a 8x8 pixel grid for shirts by default, matching the base game's convention.
 
 - **`farmer_<suffix>.png` / `farmer_girl_<suffix>.png`** — your custom body. Each row is 32px tall.
-  **Only the leftmost 6 columns of each row count as distinct poses** — this matches the vanilla
-  layout, where the remaining columns to the right of those 6 are arm and accessory sub-frames for
-  those same 6 poses, not additional poses. Your event's `animate`/frame commands should only ever
-  reference indices within that 6-per-row range.
+**Only the leftmost 6 columns of each row count as distinct poses** — this matches the vanilla
+layout, where the remaining columns to the right of those 6 are arm and accessory sub-frames for
+those same 6 poses, not additional poses. Your event's `animate`/frame commands should only ever
+reference indices within that 6-per-row range.
 - **`shirts_<suffix>.png`** — 8×8 cells. Doesn't need to match the body sheet's dimensions — only its
-  own internal frame count/order needs to line up pose-for-pose with the body (frame *N* here should
-  be the same pose as frame *N* in the body sheet).
+own internal frame count/order needs to line up pose-for-pose with the body (frame *N* here should
+be the same pose as frame *N* in the body sheet).
 - **`pants_<suffix>.png`** — 16×32 cells, same pose-for-pose correspondence as shirts.
 - All three are read left-to-right, top-to-bottom, wrapping to a new row automatically based on each
-  file's own width — you don't need to pad a sheet out to some fixed size, just make sure it actually
-  contains a cell for every pose your event uses.
+file's own width — you don't need to pad a sheet out to some fixed size, just make sure it actually
+contains a cell for every pose your event uses.
 - **There's no built-in "nude" flag or coverage rule.** Whatever you paint as the resting skin tone in
-  the body sheet's torso/leg regions *is* the default look — there's nothing to toggle, and nothing
-  stopping pants/shirts from being as minimal or as full-coverage as you draw them. Free Yoga for Farmers fully
-  suppresses the vanilla fallback shirt/pants, so your art is the only thing that ends up on screen.
+the body sheet's torso/leg regions *is* the default look — there's nothing to toggle, and nothing
+stopping pants/shirts from being as minimal or as full-coverage as you draw them. Free Yoga for Farmers fully
+suppresses the vanilla fallback shirt/pants, so your art is the only thing that ends up on screen.
+- **`NEW TO V1.2` Set custom sheet dimensions** You can now set custom dimensions for your farmer, pants, and shirt sheets. V1.2 adds adjustability to the frame    sizes. You can either edit the `FY_Offsets.json` file directly or use the SMAPI console command setDimensions command. Farmer and pants sheets use the same dimensions. This will default to the vanilla size if not changed.
+
+```
+  setDimensions <suffix> <pants cell width> <pants cell height> <shirt cell width> <shirt cell height>
+```
+- Width and height are in pixels. All 4 dimensions are required.
+- Every `SheetID` (your `<suffix>`) must be unique across **every** loaded Free Yoga for Farmers content pack,
+  not just your own — if two packs register the same suffix, only one will be used, and the console
+  will log a warning telling you which pack won.
+- setDimensions will write to your config file so that sheet will always size to the correct dimensions and revert back for any other sheet.
 
 ## Hair and accessory offsets (`FY_Offsets.json`)
 
@@ -139,9 +149,6 @@ getFrameOffset <suffix> <frame-index>
 - Offsets are in pixels; positive X is right, positive Y is down.
 - `setFrameOffset` writes back to your pack's `FY_Offsets.json` immediately, so changes persist
   between sessions — playtest a pose, nudge it, and reload the event to check.
-- Every `SheetID` (your `<suffix>`) must be unique across **every** loaded Free Yoga for Farmers content pack,
-  not just your own — if two packs register the same suffix, only one will be used, and the console
-  will log a warning telling you which pack won.
 
 ##Known limitations
 Hair, hats, and accessories aren't repositioned by Free Yoga for Farmers beyond the offset system above. They're drawn using the game's normal per-frame offset tables, redirected to your FY_Offsets.json values — but there's currently no equivalent handling if your poses need something more elaborate than a simple X/Y nudge (e.g. hair needing to flip or restyle entirely for certain poses).
