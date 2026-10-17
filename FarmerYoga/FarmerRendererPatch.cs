@@ -132,9 +132,8 @@ namespace FarmerYoga
             
             if (cachedPants != null)
             {
-                int[] pantsDims = SetPantsDimensions();
-                int pantsWidth = pantsDims[0];
-                int pantsHeight = pantsDims[1];
+                int pantsWidth = cachedPantsDimensions[0];
+                int pantsHeight = cachedPantsDimensions[1];
                 Vector2 pantsOrigin = new(origin.X, origin.Y - 8f);
                 Color pantsColor = overrideColor == Color.White ? who.pantsColor.Value : overrideColor;
                 int pantsColumns = cachedPants.Width / pantsWidth;
@@ -149,9 +148,8 @@ namespace FarmerYoga
 
             if (cachedShirt != null)
             {
-                int[] shirtDims = SetShirtDimensions();
-                int shirtWidth = shirtDims[0];
-                int shirtHeight = shirtDims[1];
+                int shirtWidth = cachedShirtDimensions[0];
+                int shirtHeight = cachedShirtDimensions[1];
                 int shirtColumns = cachedShirt.Width / shirtWidth;
                 int shirtRows = cachedShirt.Height / shirtHeight;
                 int shirtFrame = currentFrame % Math.Max(1, shirtColumns * shirtRows);

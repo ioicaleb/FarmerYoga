@@ -1,7 +1,7 @@
 {
   "Name": "Free Yoga For Farmers",
   "Author": "ioicaleb",
-  "Version": "1.0",
+  "Version": "1.2",
   "Description": "Allows use of custom farmer sprite sheets to add new frames to events",
   "UniqueID": "ioicaleb.farmeryoga",
   "EntryDll": "FarmerYoga.dll",
